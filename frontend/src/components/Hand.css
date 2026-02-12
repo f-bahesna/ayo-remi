@@ -1,0 +1,67 @@
+.hand-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    margin-top: auto;
+    padding-bottom: 2rem;
+}
+
+.hand-cards {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    flex-wrap: wrap; /* Allow wrapping if too many cards */
+    gap: 10px; /* Consistent spacing */
+    padding: 10px; /* Space for shadows/hover */
+}
+
+@keyframes slideUp {
+    from { transform: translateY(50px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.hand-card-wrapper {
+    position: relative;
+    /* transition: transform 0.2s; - removing to avoid conflict with hover */
+    cursor: pointer;
+    /* margin-right removed in favor of gap */
+    /* Removed animation delay for instant visibility */
+    animation: slideUp 0.3s ease-out backwards;
+}
+
+.hand-card-wrapper:hover {
+    z-index: 10;
+}
+
+.hand-controls {
+    margin-bottom: 1rem;
+}
+
+.action-button {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 1rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+
+.action-button.primary {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+}
+
+.action-button:disabled {
+    background: #475569;
+    color: #94a3b8;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.action-button:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 8px rgba(0,0,0,0.3);
+}

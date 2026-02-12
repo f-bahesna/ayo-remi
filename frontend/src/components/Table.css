@@ -1,0 +1,281 @@
+.game-table {
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, #0f766e, #0f172a); /* Teal to Slate dark */
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    color: white;
+}
+
+.center-area {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px; /* Fixed width for consistent radial layout */
+    height: 600px;
+    /* border: 1px dashed rgba(255,255,255,0.1); */
+    border-radius: 50%; /* Circular area guide */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none; /* Let clicks pass through empty areas */
+}
+
+/* Central Black Card (Deck) */
+.deck-pile {
+    width: 80px;
+    height: 120px;
+    background: #000; /* Pure Black */
+    border: 2px solid #fbbf24; /* Gold Border */
+    border-radius: 8px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 50; /* Above discarded cards */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+    pointer-events: auto;
+}
+
+.deck-pile.interactive {
+    cursor: pointer;
+    box-shadow: 0 0 25px #fbbf24;
+    animation: pulseDeck 2s infinite;
+}
+
+@keyframes pulseDeck {
+    0% { box-shadow: 0 0 20px #fbbf24; }
+    50% { box-shadow: 0 0 40px #fbbf24; }
+    100% { box-shadow: 0 0 20px #fbbf24; }
+}
+
+.deck-card {
+    width: 100%;
+    height: 100%;
+    background: #000; /* Black Card */
+    border-radius: 6px;
+    /* Inner pattern or logo could go here */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.deck-card::after {
+    content: "REMI";
+    color: rgba(255,255,255,0.2);
+    font-weight: bold;
+    font-size: 1.2rem;
+    transform: rotate(-45deg);
+}
+
+.played-sets {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    overflow-y: auto;
+    max-height: 100%;
+    padding: 10px;
+}
+
+.card-group {
+    display: flex;
+    background: rgba(0,0,0,0.2);
+    padding: 5px;
+    border-radius: 8px;
+}
+
+/* Opponent Seats */
+.opponent-seat {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.opponent-top { top: 20px; left: 50%; transform: translateX(-50%); }
+.opponent-left { left: 20px; top: 50%; transform: translateY(-50%); }
+.opponent-right { right: 20px; top: 50%; transform: translateY(-50%); }
+
+.avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: #334155;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    border: 2px solid #64748b;
+}
+
+.opponent-seat.active .avatar {
+    border-color: #fbbf24;
+    box-shadow: 0 0 15px #fbbf24;
+    background: #4b5563;
+}
+
+.opponent-hand {
+    display: flex;
+    gap: -10px;
+}
+
+.mini-card-back {
+    width: 30px;
+    height: 45px;
+    background: #1e293b;
+    border: 1px solid #94a3b8;
+    border-radius: 4px;
+    margin-right: -20px;
+}
+
+/* My Seat */
+.my-seat {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    /* height: 250px; */
+    background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 20px;
+}
+
+.my-seat.active-turn {
+    background: linear-gradient(to top, rgba(59, 130, 246, 0.2), transparent);
+}
+
+.my-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.turn-indicator {
+    font-size: 1.2rem;
+    font-weight: bold;
+    text-shadow: 0 2px 4px black;
+    color: #fbbf24;
+}
+
+.action-button.danger, .action-button.discard-btn {
+    background: #ef4444;
+    color: white;
+}
+
+.action-button.nutup {
+    background: linear-gradient(135deg, #f59e0b, #b45309);
+    color: white;
+    border: 2px solid #fbbf24;
+    box-shadow: 0 0 10px #fbbf24;
+}
+
+.discard-pile {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Individual cards will be auto */
+    /* Removed border/background */
+}
+
+.discard-pile .card {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* transform determined inline by JS */
+    transform-origin: center center;
+    pointer-events: auto;
+    transition: transform 0.3s ease-out;
+}
+
+/* Ensure top card is distinctly interactive */
+.discard-pile .card:last-child {
+    box-shadow: 0 0 15px rgba(255,255,255,0.5);
+    z-index: 40 !important;
+}
+
+.discard-pile.interactive .card:last-child {
+    cursor: pointer;
+    border: 2px solid #3b82f6;
+    box-shadow: 0 0 20px #3b82f6;
+}
+
+.discard-pile.interactive .card:last-child:hover {
+    transform: var(--base-transform) scale(1.1) !important; /* Need to preserve base rotate/translate */
+}
+
+/* Move Played Sets to bottom of center area */
+.player-played-sets {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 5px;
+    pointer-events: auto;
+}
+
+.player-played-sets.my-sets {
+    margin-bottom: 10px; /* Space between sets and hand */
+}
+
+.empty-slot.dashed {
+    color: rgba(255,255,255,0.3);
+}
+
+.hand-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Animations */
+@keyframes drawCard {
+    from {
+        transform: translateY(-200px) scale(0.5);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes discardCard {
+    to {
+        transform: translateY(-300px) scale(0.5);
+        opacity: 0;
+    }
+}
+
+.drawing-card {
+    animation: drawCard 0.5s ease-out forwards;
+}
+
+.discarding-card {
+    animation: discardCard 0.5s ease-in forwards;
+}
+
+.score-display {
+    top: 5px;
+    right: 5px;
+    position: absolute;
+    background: rgba(0,0,0,0.6);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: #fbbf24;
+}
