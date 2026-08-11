@@ -244,51 +244,81 @@ func IsWinningHand(hand []models.Card) bool {
     return false
 }
 
-// canPartition recursively checks if cards can be split into valid sets
+// canPartition checks if cards can be split into valid sets (each size >= 3).
+// Uses bitmask memoization over "which cards are still unplaced" so that the
+// same remaining-card state reached via different partition orders is only
+// solved once, instead of being recomputed from scratch (which made the
+// naive recursive version exponential enough to take 10+ seconds on hands
+// as small as 17 cards - see backend/game/logic_test.go).
 func canPartition(cards []models.Card) bool {
-    if len(cards) == 0 {
+    n := len(cards)
+    if n == 0 {
         return true
     }
-    if len(cards) < 3 {
+    if n < 3 {
         return false
     }
-    
-    // Try to find a valid set including the first card
-    // We must use the first card to avoid trying same sets multiple times
-    first := cards[0]
-    rest := cards[1:]
-    
-    // We need to choose 2 or more cards from 'rest' to form a set with 'first'
-    // This is the subset sum problem variant.
-    // N is small (max ~13).
-    
-    n := len(rest)
-    // Iterate all subsets of rest of size >= 2
-    // To do this efficiently:
-    // We can just iterate all subsets, check if isValid(subset + first), then recurse on remainder.
-    
-    maxSubset := 1 << n
-    for i := 0; i < maxSubset; i++ {
-        var potentialSet []models.Card
-         var remaining []models.Card
-         
-        potentialSet = append(potentialSet, first)
-        
-        // Build potential set and remaining list
-        for j := 0; j < n; j++ {
-            if (i & (1 << j)) > 0 {
-                potentialSet = append(potentialSet, rest[j])
-            } else {
-                remaining = append(remaining, rest[j])
-            }
-        }
-        
-        if len(potentialSet) >= 3 && IsValidSet(potentialSet) {
-            if canPartition(remaining) {
-                return true
-            }
+    if n > 31 {
+        // Bitmask is a uint32; hands never realistically approach this size.
+        n = 31
+    }
+    full := uint32(1)<<uint(n) - 1
+    memo := make(map[uint32]bool)
+    return canPartitionMask(cards, full, memo)
+}
+
+func canPartitionMask(cards []models.Card, mask uint32, memo map[uint32]bool) bool {
+    if mask == 0 {
+        return true
+    }
+    if v, ok := memo[mask]; ok {
+        return v
+    }
+
+    // Always anchor on the lowest remaining index to avoid trying the same
+    // partition in multiple orders.
+    first := -1
+    for i := range cards {
+        if mask&(1<<uint(i)) != 0 {
+            first = i
+            break
         }
     }
-    
-    return false
+    restMask := mask &^ (1 << uint(first))
+
+    result := false
+    // Iterate all subsets of restMask (standard "submask enumeration").
+    for sub := restMask; ; sub = (sub - 1) & restMask {
+        if popcount(sub) >= 2 { // + first == a set/run of size >= 3
+            potentialSet := make([]models.Card, 0, popcount(sub)+1)
+            potentialSet = append(potentialSet, cards[first])
+            for i := range cards {
+                if sub&(1<<uint(i)) != 0 {
+                    potentialSet = append(potentialSet, cards[i])
+                }
+            }
+            if IsValidSet(potentialSet) {
+                remainingMask := mask &^ (1 << uint(first)) &^ sub
+                if canPartitionMask(cards, remainingMask, memo) {
+                    result = true
+                    break
+                }
+            }
+        }
+        if sub == 0 {
+            break
+        }
+    }
+
+    memo[mask] = result
+    return result
+}
+
+func popcount(x uint32) int {
+    count := 0
+    for x != 0 {
+        x &= x - 1
+        count++
+    }
+    return count
 }

@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"testing"
+	"time"
 	"remi-game/models"
 )
 
@@ -210,5 +211,44 @@ func TestIsWinningHand(t *testing.T) {
                 t.Errorf("IsWinningHand() = %v, want %v", got, tt.expected)
             }
         })
+    }
+}
+
+// TestIsWinningHand_WorstCaseStaysBounded guards against reintroducing the
+// unmemoized canPartition, which took 10+ seconds on a 17+ card adversarial
+// hand (all jokers/duplicated ranks, no valid partition) because it
+// recomputed identical "remaining cards" subproblems from scratch on every
+// recursive path. The largest hand DeclareWin ever sees in real play is 11
+// cards (an 8-card starting hand plus a 3-card pile draw, since TurnPhase
+// only allows one draw per turn before a mandatory play/discard). This test
+// checks a hand a few cards past that realistic max, with a bound generous
+// enough to not be flaky under `go test -race` (which adds ~3x overhead)
+// while still catching a catastrophic regression.
+func TestIsWinningHand_WorstCaseStaysBounded(t *testing.T) {
+    hand := []models.Card{
+        {Suit: models.Joker, Rank: models.JokerRank, ID: "j0"},
+        {Suit: models.Joker, Rank: models.JokerRank, ID: "j1"},
+        {Suit: models.Joker, Rank: models.JokerRank, ID: "j2"},
+    }
+    suits := []models.Suit{models.Spades, models.Hearts, models.Diamonds, models.Clubs}
+    for i := 0; i < 11; i++ {
+        hand = append(hand, models.Card{Suit: suits[i%4], Rank: models.Rank(2 + i%9), ID: fmt.Sprintf("c%d", i)})
+    }
+
+    done := make(chan bool, 1)
+    start := time.Now()
+    go func() {
+        IsWinningHand(hand)
+        done <- true
+    }()
+
+    select {
+    case <-done:
+        elapsed := time.Since(start)
+        if elapsed > 2*time.Second {
+            t.Errorf("IsWinningHand took %v on a 14-card worst-case hand; expected well under 2s", elapsed)
+        }
+    case <-time.After(5 * time.Second):
+        t.Fatal("IsWinningHand did not return within 5s on a 14-card worst-case hand (exponential blowup regression)")
     }
 }
