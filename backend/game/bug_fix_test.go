@@ -214,3 +214,58 @@ func TestBug3_RestartAndStartUnlocked_NoDeadlockUnderHeldMutex(t *testing.T) {
 
     t.Log("Bug 3 FIXED: StartGameUnlocked/RestartGameUnlocked run safely under an already-held mutex")
 }
+
+// Bug 4: a player's IsConnected flag never left true once set in AddPlayer,
+// even after their WebSocket connection dropped. The frontend renders this
+// flag as a green/gray status dot for every seat (Table.tsx), so the other
+// 3 players had no way to tell a teammate had disconnected - the dot stayed
+// green forever. ws/client.go's ReadPump now calls SetPlayerConnectedUnlocked
+// on disconnect; this test guards the GameManager-level piece of that fix.
+func TestBug4_SetPlayerConnected_ReflectsDisconnect(t *testing.T) {
+    store := &MockStore{}
+    gm := NewGame(store)
+    p1, _ := gm.AddPlayer("P1")
+
+    if !gm.Game.Players[0].IsConnected {
+        t.Fatalf("player should start connected")
+    }
+
+    if !gm.SetPlayerConnected(p1.ID, false) {
+        t.Fatalf("Bug 4 STILL BROKEN: SetPlayerConnected did not find known player %s", p1.ID)
+    }
+    if gm.Game.Players[0].IsConnected {
+        t.Fatalf("Bug 4 STILL BROKEN: IsConnected still true after disconnect")
+    }
+
+    if gm.SetPlayerConnected("no-such-player", false) {
+        t.Fatalf("SetPlayerConnected should report false for an unknown player ID")
+    }
+
+    t.Log("Bug 4 FIXED: SetPlayerConnected flips IsConnected so other players' status dot updates")
+}
+
+// Bug 4b: ReadPump's disconnect handler calls SetPlayerConnectedUnlocked from
+// inside a block that already holds gm.Mutex (to keep the broadcast read
+// race-free against concurrent, already-locked MapMessageToGameAction
+// mutations). Guard against that pattern deadlocking, mirroring Bug 3's test.
+func TestBug4b_SetPlayerConnectedUnlocked_NoDeadlockUnderHeldMutex(t *testing.T) {
+    store := &MockStore{}
+    gm := NewGame(store)
+    p1, _ := gm.AddPlayer("P1")
+
+    done := make(chan bool, 1)
+    go func() {
+        gm.Mutex.Lock()
+        defer gm.Mutex.Unlock()
+        done <- gm.SetPlayerConnectedUnlocked(p1.ID, false)
+    }()
+
+    select {
+    case found := <-done:
+        if !found {
+            t.Fatalf("SetPlayerConnectedUnlocked did not find known player %s", p1.ID)
+        }
+    case <-time.After(2 * time.Second):
+        t.Fatal("Bug 4b STILL BROKEN: SetPlayerConnectedUnlocked deadlocked while gm.Mutex was already held")
+    }
+}

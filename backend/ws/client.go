@@ -39,6 +39,18 @@ func (c *Client) ReadPump() {
 	defer func() {
 		c.Hub.unregister <- c
 		c.Conn.Close()
+
+		// Reflect the disconnect in game state so the other players' "connected"
+		// dot (Table.tsx) doesn't stay green forever, and broadcast while still
+		// holding Mutex so BroadcastGameUpdate's reads can't race a concurrent
+		// mutation from another player's already-locked MapMessageToGameAction call.
+		if c.PlayerID != "" {
+			c.Game.Mutex.Lock()
+			if c.Game.SetPlayerConnectedUnlocked(c.PlayerID, false) {
+				c.Hub.BroadcastGameUpdate(c.Game)
+			}
+			c.Game.Mutex.Unlock()
+		}
 	}()
 	c.Conn.SetReadLimit(maxMessageSize)
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))

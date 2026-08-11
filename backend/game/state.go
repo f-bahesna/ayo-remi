@@ -633,6 +633,28 @@ func (gm *GameManager) RestartGameUnlocked(initiatorID string) error {
     return nil
 }
 
+// SetPlayerConnected updates a player's connection status (used when a
+// WebSocket client connects/disconnects) and reports whether a matching
+// player was found.
+func (gm *GameManager) SetPlayerConnected(playerID string, connected bool) bool {
+    gm.Mutex.Lock()
+    defer gm.Mutex.Unlock()
+
+    return gm.SetPlayerConnectedUnlocked(playerID, connected)
+}
+
+// SetPlayerConnectedUnlocked is the lock-free core of SetPlayerConnected.
+// Caller MUST hold gm.Mutex.
+func (gm *GameManager) SetPlayerConnectedUnlocked(playerID string, connected bool) bool {
+    for i := range gm.Game.Players {
+        if gm.Game.Players[i].ID == playerID {
+            gm.Game.Players[i].IsConnected = connected
+            return true
+        }
+    }
+    return false
+}
+
 func (gm *GameManager) GetPublicView(playerID string) *models.PublicGameView {
     view := &models.PublicGameView{
         ID: gm.Game.ID,
