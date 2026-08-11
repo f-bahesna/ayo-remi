@@ -48,7 +48,7 @@ func TestStartGame_DealCounts(t *testing.T) {
     }
 }
 
-func TestDrawCard_PileAndReshuffle(t *testing.T) {
+func TestDrawCard_PileAndEmptyDeckEndsGame(t *testing.T) {
     gm := NewGame(&MockStore{})
     gm.AddPlayer("Master")
     gm.AddPlayer("P2")
@@ -99,35 +99,37 @@ func TestDrawCard_PileAndReshuffle(t *testing.T) {
         t.Errorf("P2 should have 8 cards after draw")
     }
     
-    // Test Reshuffle (Deck is empty, Pile has cards)
+    // Test empty-deck game-over rule (REMI_RULES_ID.md: "Dek Habis (Game Over)").
+    // When the deck runs out, the game ends immediately with no winner
+    // and scores are calculated - there is no reshuffle-from-pile.
     gm.Game.Deck = []models.Card{}
-    
-    // Pile needs > 1 card to reshuffle. Top card stays. Rest goes to deck.
-    // Let's add 2 cards to pile.
-    topCard := models.Card{Suit: models.Hearts, Rank: 1, ID: "top"}
-    bottomCard := models.Card{Suit: models.Hearts, Rank: 2, ID: "bottom"}
-    gm.Game.Pile = []models.Card{bottomCard, topCard}
-    
+    gm.Game.Pile = []models.Card{
+        {Suit: models.Hearts, Rank: 2, ID: "bottom"},
+        {Suit: models.Hearts, Rank: 1, ID: "top"},
+    }
+
     // Switch to Master turn
     gm.Game.TurnPhase = models.PhaseDraw
     gm.Game.CurrentTurnPlayer = 0 // Master
-    
-    // Master draws from DECK (empty -> triggers reshuffle)
+    masterHandSize := len(gm.Game.Players[0].Hand)
+
+    // Master draws from an empty DECK -> game ends, no winner
     err = gm.DrawCard(master.ID, "DECK", 1)
     if err != nil {
-        t.Fatalf("Draw from empty Deck (reshuffle) failed: %v", err)
+        t.Fatalf("Draw from empty Deck should end the game, not error: %v", err)
     }
-    
-    // Verify results
-    // - Pile should have 1 card (topCard)
-    // - Deck should have 0 (bottomCard moved to deck, then drawn by Master)
-    // - Master hand +1
-    
-    if len(gm.Game.Pile) != 1 {
-          t.Errorf("Pile should have 1 card left")
+
+    if gm.Game.Status != models.StateFinished {
+        t.Errorf("Game should be Finished when deck is empty, got %v", gm.Game.Status)
     }
-    if gm.Game.Pile[0].ID != topCard.ID {
-        t.Errorf("Top card of pile should persist")
+    if gm.Game.WinnerID != "" {
+        t.Errorf("Empty deck should end with no winner, got WinnerID=%q", gm.Game.WinnerID)
+    }
+    if len(gm.Game.Players[0].Hand) != masterHandSize {
+        t.Errorf("Master hand should be unchanged when deck is empty, got %d want %d", len(gm.Game.Players[0].Hand), masterHandSize)
+    }
+    if len(gm.Game.Pile) != 2 {
+        t.Errorf("Pile should remain untouched (no reshuffle), got %d cards", len(gm.Game.Pile))
     }
 }
 
