@@ -204,14 +204,19 @@ func (c *Client) MapMessageToGameAction(msg WSMessage) {
         c.Hub.BroadcastGameUpdate(c.Game)
 
     case MsgStartGame:
-        if err := c.Game.StartGame(c.PlayerID); err != nil {
+        // MapMessageToGameAction already holds c.Game.Mutex, so we must call the
+        // lock-free core (StartGame itself re-locks the same non-reentrant mutex
+        // and would deadlock the whole room).
+        if err := c.Game.StartGameUnlocked(c.PlayerID); err != nil {
              c.SendError(err.Error())
              return
         }
         c.Hub.BroadcastGameUpdate(c.Game)
 
     case MsgRestartGame:
-        if err := c.Game.RestartGame(c.PlayerID); err != nil {
+        // Same reasoning as MsgStartGame above: use the lock-free core since the
+        // mutex is already held here.
+        if err := c.Game.RestartGameUnlocked(c.PlayerID); err != nil {
             c.SendError(err.Error())
             return
         }

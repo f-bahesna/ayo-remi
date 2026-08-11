@@ -574,6 +574,12 @@ func (gm *GameManager) RestartGame(initiatorID string) error {
     gm.Mutex.Lock()
     defer gm.Mutex.Unlock()
 
+    return gm.RestartGameUnlocked(initiatorID)
+}
+
+// RestartGameUnlocked is the lock-free core of RestartGame.
+// Caller MUST hold gm.Mutex.
+func (gm *GameManager) RestartGameUnlocked(initiatorID string) error {
     if gm.Game.Status != models.StateFinished {
         return errors.New("game is not finished")
     }

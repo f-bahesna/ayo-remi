@@ -2,6 +2,7 @@ package game
 
 import (
     "testing"
+    "time"
     "remi-game/models"
 )
 
@@ -157,4 +158,59 @@ func TestBug2_DiscardAfterDrawFromPile(t *testing.T) {
     }
 
     t.Log("Bug 2 FIXED: Discard works correctly after DrawFromPile")
+}
+
+// Bug 3: RestartGame/StartGame must not deadlock when called from a context
+// that already holds gm.Mutex, which is exactly how ws/client.go's
+// MapMessageToGameAction dispatches every message (it locks gm.Mutex once for
+// the whole switch statement, then calls into the game package). The locking
+// RestartGame/StartGame methods re-lock the same non-reentrant sync.Mutex,
+// which previously deadlocked the entire room - freezing all 4 players -
+// the moment anyone clicked "Play Again" (RESTART_GAME) or a client sent
+// START_GAME. The *Unlocked variants are what MapMessageToGameAction must call.
+func TestBug3_RestartAndStartUnlocked_NoDeadlockUnderHeldMutex(t *testing.T) {
+    store := &MockStore{}
+    gm := NewGame(store)
+    p1, _ := gm.AddPlayer("P1")
+    gm.AddPlayer("P2")
+    gm.AddPlayer("P3")
+    gm.AddPlayer("P4")
+
+    done := make(chan error, 1)
+    go func() {
+        // Mirrors ws/client.go MapMessageToGameAction: lock once, then dispatch.
+        gm.Mutex.Lock()
+        defer gm.Mutex.Unlock()
+        done <- gm.StartGameUnlocked(p1.ID)
+    }()
+
+    select {
+    case err := <-done:
+        if err != nil {
+            t.Fatalf("StartGameUnlocked failed: %v", err)
+        }
+    case <-time.After(2 * time.Second):
+        t.Fatal("Bug 3 STILL BROKEN: StartGameUnlocked deadlocked while gm.Mutex was already held")
+    }
+
+    // Force game into FINISHED so RestartGame's precondition is met.
+    gm.Game.Status = models.StateFinished
+
+    done2 := make(chan error, 1)
+    go func() {
+        gm.Mutex.Lock()
+        defer gm.Mutex.Unlock()
+        done2 <- gm.RestartGameUnlocked(p1.ID)
+    }()
+
+    select {
+    case err := <-done2:
+        if err != nil {
+            t.Fatalf("RestartGameUnlocked failed: %v", err)
+        }
+    case <-time.After(2 * time.Second):
+        t.Fatal("Bug 3 STILL BROKEN: RestartGameUnlocked deadlocked while gm.Mutex was already held")
+    }
+
+    t.Log("Bug 3 FIXED: StartGameUnlocked/RestartGameUnlocked run safely under an already-held mutex")
 }
