@@ -350,24 +350,30 @@ func (gm *GameManager) PlaySet(playerID string, cards []models.Card) error {
         return errors.New("must draw first or already in discard phase")
     }
 
-    if !IsValidSet(cards) {
-        return errors.New("invalid set")
-    }
-
-    toRemove := make(map[string]bool)
-    for _, c := range cards {
-        toRemove[c.ID] = true
-    }
-
+    // Look up the authoritative card data from the player's hand by ID.
+    // The client only supplies IDs to select which cards to play; trusting
+    // the client's Suit/Rank fields directly (as this used to) would let a
+    // client fabricate a "valid" set from bogus card data while only ever
+    // owning the referenced IDs - corrupting TableSets/PlayedSets for all
+    // players. DrawFromPile already resolves cards this way; mirror it here.
     playerHandMap := make(map[string]models.Card)
     for _, c := range gm.Game.Players[idx].Hand {
         playerHandMap[c.ID] = c
     }
 
-    for id := range toRemove {
-        if _, ok := playerHandMap[id]; !ok {
+    toRemove := make(map[string]bool)
+    canonicalCards := make([]models.Card, 0, len(cards))
+    for _, c := range cards {
+        actual, ok := playerHandMap[c.ID]
+        if !ok {
             return errors.New("player does not have these cards")
         }
+        toRemove[c.ID] = true
+        canonicalCards = append(canonicalCards, actual)
+    }
+
+    if !IsValidSet(canonicalCards) {
+        return errors.New("invalid set")
     }
 
     newHand := make([]models.Card, 0)
@@ -378,8 +384,8 @@ func (gm *GameManager) PlaySet(playerID string, cards []models.Card) error {
     }
     gm.Game.Players[idx].Hand = newHand
 
-    gm.Game.TableSets = append(gm.Game.TableSets, cards) // Keep for global history if needed, or remove?
-    gm.Game.Players[idx].PlayedSets = append(gm.Game.Players[idx].PlayedSets, cards)
+    gm.Game.TableSets = append(gm.Game.TableSets, canonicalCards) // Keep for global history if needed, or remove?
+    gm.Game.Players[idx].PlayedSets = append(gm.Game.Players[idx].PlayedSets, canonicalCards)
     gm.Game.Players[idx].HasPlayedSet = true // Mark as played set
     
     gm.save()

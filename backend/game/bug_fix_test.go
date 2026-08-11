@@ -269,3 +269,73 @@ func TestBug4b_SetPlayerConnectedUnlocked_NoDeadlockUnderHeldMutex(t *testing.T)
         t.Fatal("Bug 4b STILL BROKEN: SetPlayerConnectedUnlocked deadlocked while gm.Mutex was already held")
     }
 }
+
+// Bug 5: PlaySet used to validate and store whatever Suit/Rank the client
+// sent for each card, only checking that the card ID existed somewhere in
+// the player's hand. A client could therefore reference real card IDs it
+// owns but relabel their Suit/Rank in the payload to fabricate a "valid"
+// set out of cards that don't actually form one - corrupting TableSets and
+// PlayedSets (broadcast to all 4 players) while quietly removing the real,
+// unrelated cards from the player's hand. PlaySet must resolve cards by ID
+// from the server's authoritative hand data, mirroring DrawFromPile.
+func TestBug5_PlaySet_IgnoresClientSpoofedCardData(t *testing.T) {
+    store := &MockStore{}
+    gm := NewGame(store)
+
+    // Real hand: three unrelated cards that do NOT form a valid set/run.
+    p1 := models.Player{ID: "p1", Name: "P1", Hand: []models.Card{
+        {Suit: models.Spades, Rank: 2, ID: "h1"},
+        {Suit: models.Spades, Rank: 4, ID: "h3"},
+        {Suit: models.Hearts, Rank: 7, ID: "h4"},
+    }}
+    gm.Game = models.Game{
+        ID:                "test",
+        Status:            models.StateInProgress,
+        Players:           []models.Player{p1},
+        CurrentTurnPlayer: 0,
+        TurnPhase:         models.PhasePlay,
+        TableSets:         make([][]models.Card, 0),
+    }
+
+    // Attacker owns h1/h3/h4 but relabels them as a fabricated valid run
+    // (5S,6S,7S) in the outgoing payload.
+    err := gm.PlaySet("p1", []models.Card{
+        {Suit: models.Spades, Rank: 5, ID: "h1"},
+        {Suit: models.Spades, Rank: 6, ID: "h3"},
+        {Suit: models.Spades, Rank: 7, ID: "h4"},
+    })
+    if err == nil {
+        t.Fatalf("Bug 5 STILL BROKEN: PlaySet accepted a set with client-spoofed Suit/Rank data")
+    }
+
+    if len(gm.Game.Players[0].Hand) != 3 {
+        t.Errorf("hand should be untouched after a rejected PlaySet, got %d cards", len(gm.Game.Players[0].Hand))
+    }
+    if len(gm.Game.TableSets) != 0 {
+        t.Errorf("no set should have been added to the table, got %d", len(gm.Game.TableSets))
+    }
+
+    // Sanity check: playing the player's REAL matching cards still works,
+    // and the table/played-set data reflects the actual hand's card data.
+    p2 := models.Player{ID: "p2", Name: "P2", Hand: []models.Card{
+        {Suit: models.Spades, Rank: 5, ID: "r1"},
+        {Suit: models.Hearts, Rank: 5, ID: "r2"},
+        {Suit: models.Diamonds, Rank: 5, ID: "r3"},
+    }}
+    gm.Game.Players = append(gm.Game.Players, p2)
+    gm.Game.CurrentTurnPlayer = 1
+
+    err = gm.PlaySet("p2", []models.Card{
+        {Suit: models.Spades, Rank: 5, ID: "r1"},
+        {Suit: models.Hearts, Rank: 5, ID: "r2"},
+        {Suit: models.Diamonds, Rank: 5, ID: "r3"},
+    })
+    if err != nil {
+        t.Fatalf("PlaySet should succeed for a genuinely valid set: %v", err)
+    }
+    if len(gm.Game.TableSets) != 1 || len(gm.Game.TableSets[0]) != 3 {
+        t.Fatalf("expected 1 table set of 3 cards, got %+v", gm.Game.TableSets)
+    }
+
+    t.Log("Bug 5 FIXED: PlaySet resolves cards by ID from server-authoritative hand data")
+}
