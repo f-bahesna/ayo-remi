@@ -65,9 +65,11 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
                 <div className="center-area">
                     <div className="waiting-overlay">
                          <h2 style={{ fontSize: '3rem', color: '#fbbf24' }}>GAME OVER</h2>
-                         {gameState.winnerId ? (
-                            <h3 style={{ fontSize: '2rem' }}>Winner: {gameState.winnerId === gameState.mySeatIndex.toString() ? "YOU!" : `Player ${gameState.players?.find(p => p.id === gameState.winnerId)?.name || gameState.winnerId.slice(0,8)}`}</h3>
-                         ) : <h2>Winner Declared!</h2>}
+                         {gameState.winnerId ? (() => {
+                            const winner = gameState.players?.find(p => p.id === gameState.winnerId);
+                            const isMe = winner?.seatIndex === gameState.mySeatIndex;
+                            return <h3 style={{ fontSize: '2rem' }}>Winner: {isMe ? "YOU!" : `Player ${winner?.name || gameState.winnerId.slice(0,8)}`}</h3>;
+                         })() : <h2>Winner Declared!</h2>}
                          
                          <div className="scoreboard" style={{ margin: '2rem 0', textAlign: 'left' }}>
                             <h3>Scores:</h3>
@@ -158,7 +160,7 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
                                 {gameState.players?.map((p, i) => (
                                     <li key={p.id || i} style={{ padding: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.isConnected ? '#10b981' : '#64748b' }}></div>
-                                        <span>{p.name} {p.id === gameState.mySeatIndex.toString() ? "(You)" : ""}</span>
+                                        <span>{p.name} {p.seatIndex === gameState.mySeatIndex ? "(You)" : ""}</span>
                                         {p.seatIndex === 0 && <span style={{ fontSize: '0.8rem', background: '#eab308', color: 'black', padding: '2px 6px', borderRadius: '4px', marginLeft: 'auto' }}>Master</span>}
                                     </li>
                                 ))}
