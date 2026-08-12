@@ -350,24 +350,30 @@ func (gm *GameManager) PlaySet(playerID string, cards []models.Card) error {
         return errors.New("must draw first or already in discard phase")
     }
 
-    if !IsValidSet(cards) {
-        return errors.New("invalid set")
-    }
-
-    toRemove := make(map[string]bool)
-    for _, c := range cards {
-        toRemove[c.ID] = true
-    }
-
+    // Look up the authoritative card data from the player's hand by ID.
+    // The client only supplies IDs to select which cards to play; trusting
+    // the client's Suit/Rank fields directly (as this used to) would let a
+    // client fabricate a "valid" set from bogus card data while only ever
+    // owning the referenced IDs - corrupting TableSets/PlayedSets for all
+    // players. DrawFromPile already resolves cards this way; mirror it here.
     playerHandMap := make(map[string]models.Card)
     for _, c := range gm.Game.Players[idx].Hand {
         playerHandMap[c.ID] = c
     }
 
-    for id := range toRemove {
-        if _, ok := playerHandMap[id]; !ok {
+    toRemove := make(map[string]bool)
+    canonicalCards := make([]models.Card, 0, len(cards))
+    for _, c := range cards {
+        actual, ok := playerHandMap[c.ID]
+        if !ok {
             return errors.New("player does not have these cards")
         }
+        toRemove[c.ID] = true
+        canonicalCards = append(canonicalCards, actual)
+    }
+
+    if !IsValidSet(canonicalCards) {
+        return errors.New("invalid set")
     }
 
     newHand := make([]models.Card, 0)
@@ -378,8 +384,8 @@ func (gm *GameManager) PlaySet(playerID string, cards []models.Card) error {
     }
     gm.Game.Players[idx].Hand = newHand
 
-    gm.Game.TableSets = append(gm.Game.TableSets, cards) // Keep for global history if needed, or remove?
-    gm.Game.Players[idx].PlayedSets = append(gm.Game.Players[idx].PlayedSets, cards)
+    gm.Game.TableSets = append(gm.Game.TableSets, canonicalCards) // Keep for global history if needed, or remove?
+    gm.Game.Players[idx].PlayedSets = append(gm.Game.Players[idx].PlayedSets, canonicalCards)
     gm.Game.Players[idx].HasPlayedSet = true // Mark as played set
     
     gm.save()
@@ -574,6 +580,12 @@ func (gm *GameManager) RestartGame(initiatorID string) error {
     gm.Mutex.Lock()
     defer gm.Mutex.Unlock()
 
+    return gm.RestartGameUnlocked(initiatorID)
+}
+
+// RestartGameUnlocked is the lock-free core of RestartGame.
+// Caller MUST hold gm.Mutex.
+func (gm *GameManager) RestartGameUnlocked(initiatorID string) error {
     if gm.Game.Status != models.StateFinished {
         return errors.New("game is not finished")
     }
@@ -625,6 +637,28 @@ func (gm *GameManager) RestartGame(initiatorID string) error {
 
     gm.save()
     return nil
+}
+
+// SetPlayerConnected updates a player's connection status (used when a
+// WebSocket client connects/disconnects) and reports whether a matching
+// player was found.
+func (gm *GameManager) SetPlayerConnected(playerID string, connected bool) bool {
+    gm.Mutex.Lock()
+    defer gm.Mutex.Unlock()
+
+    return gm.SetPlayerConnectedUnlocked(playerID, connected)
+}
+
+// SetPlayerConnectedUnlocked is the lock-free core of SetPlayerConnected.
+// Caller MUST hold gm.Mutex.
+func (gm *GameManager) SetPlayerConnectedUnlocked(playerID string, connected bool) bool {
+    for i := range gm.Game.Players {
+        if gm.Game.Players[i].ID == playerID {
+            gm.Game.Players[i].IsConnected = connected
+            return true
+        }
+    }
+    return false
 }
 
 func (gm *GameManager) GetPublicView(playerID string) *models.PublicGameView {

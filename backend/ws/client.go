@@ -39,6 +39,18 @@ func (c *Client) ReadPump() {
 	defer func() {
 		c.Hub.unregister <- c
 		c.Conn.Close()
+
+		// Reflect the disconnect in game state so the other players' "connected"
+		// dot (Table.tsx) doesn't stay green forever, and broadcast while still
+		// holding Mutex so BroadcastGameUpdate's reads can't race a concurrent
+		// mutation from another player's already-locked MapMessageToGameAction call.
+		if c.PlayerID != "" {
+			c.Game.Mutex.Lock()
+			if c.Game.SetPlayerConnectedUnlocked(c.PlayerID, false) {
+				c.Hub.BroadcastGameUpdate(c.Game)
+			}
+			c.Game.Mutex.Unlock()
+		}
 	}()
 	c.Conn.SetReadLimit(maxMessageSize)
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -204,14 +216,19 @@ func (c *Client) MapMessageToGameAction(msg WSMessage) {
         c.Hub.BroadcastGameUpdate(c.Game)
 
     case MsgStartGame:
-        if err := c.Game.StartGame(c.PlayerID); err != nil {
+        // MapMessageToGameAction already holds c.Game.Mutex, so we must call the
+        // lock-free core (StartGame itself re-locks the same non-reentrant mutex
+        // and would deadlock the whole room).
+        if err := c.Game.StartGameUnlocked(c.PlayerID); err != nil {
              c.SendError(err.Error())
              return
         }
         c.Hub.BroadcastGameUpdate(c.Game)
 
     case MsgRestartGame:
-        if err := c.Game.RestartGame(c.PlayerID); err != nil {
+        // Same reasoning as MsgStartGame above: use the lock-free core since the
+        // mutex is already held here.
+        if err := c.Game.RestartGameUnlocked(c.PlayerID); err != nil {
             c.SendError(err.Error())
             return
         }

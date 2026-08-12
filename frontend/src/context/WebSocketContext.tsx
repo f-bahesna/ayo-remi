@@ -79,7 +79,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
     };
 
-    const drawCard = (source: "DECK" | "PILE" = "DECK") => sendMessage('DRAW_CARD', { source });
+    const drawCard = (source: "DECK" | "PILE" = "DECK", count: number = 1) => sendMessage('DRAW_CARD', { source, count });
     const drawFromPile = (handCardIds: string[], pileCardId: string) => sendMessage('DRAW_FROM_PILE', { handCardIds, pileCardId });
     const playSet = (cards: any[]) => sendMessage('PLAY_SET', { cards });
     const discardCard = (cardId: string) => sendMessage('DISCARD_CARD', { cardId });

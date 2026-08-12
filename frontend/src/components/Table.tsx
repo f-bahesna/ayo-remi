@@ -9,8 +9,27 @@ interface TableProps {
 }
 
 const Table: React.FC<TableProps> = ({ roomId }) => {
-    const { gameState, drawCard, drawFromPile, playSet, discardCard, declareWin, startGame, restartGame, isMyTurn } = useGame();
+    const { gameState, drawCard, drawFromPile, playSet, discardCard, declareWin, restartGame, isMyTurn } = useGame();
     const [selectedHandCardIds, setSelectedHandCardIds] = React.useState<string[]>([]);
+
+    // State for join notifications. Declared unconditionally (before any early
+    // return) so hook order stays stable across FINISHED/WAITING/IN_PROGRESS renders.
+    const [notification, setNotification] = React.useState<string | null>(null);
+    const prevPlayerCount = React.useRef(0);
+
+    // Effect to detect new players
+    React.useEffect(() => {
+        if (gameState && gameState.players) {
+            const currentCount = gameState.players.length;
+            if (prevPlayerCount.current > 0 && currentCount > prevPlayerCount.current) {
+                // New player joined
+                const newPlayer = gameState.players[currentCount - 1]; // Assuming appended
+                setNotification(`${newPlayer.name} joined the game!`);
+                setTimeout(() => setNotification(null), 3000);
+            }
+            prevPlayerCount.current = currentCount;
+        }
+    }, [gameState?.players]);
 
     if (!gameState) return <div className="loading">Loading game state...</div>;
 
@@ -29,7 +48,10 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
     // I will replace the start of the component and the Waiting block.
     
     const handleDrawDeck = () => {
-        if (isMyTurn && gameState.deckCount > 0 && gameState.turnPhase === 'DRAW') {
+        // Note: deckCount === 0 is intentionally allowed through - drawing from an
+        // empty deck is how the player triggers the backend's "deck empty" game-over
+        // rule (REMI_RULES_ID.md). Blocking the click here would strand the game.
+        if (isMyTurn && gameState.turnPhase === 'DRAW') {
             drawCard("DECK");
         }
     }
@@ -43,9 +65,11 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
                 <div className="center-area">
                     <div className="waiting-overlay">
                          <h2 style={{ fontSize: '3rem', color: '#fbbf24' }}>GAME OVER</h2>
-                         {gameState.winnerId ? (
-                            <h3 style={{ fontSize: '2rem' }}>Winner: {gameState.winnerId === gameState.mySeatIndex.toString() ? "YOU!" : `Player ${gameState.players?.find(p => p.id === gameState.winnerId)?.name || gameState.winnerId.slice(0,8)}`}</h3>
-                         ) : <h2>Winner Declared!</h2>}
+                         {gameState.winnerId ? (() => {
+                            const winner = gameState.players?.find(p => p.id === gameState.winnerId);
+                            const isMe = winner?.seatIndex === gameState.mySeatIndex;
+                            return <h3 style={{ fontSize: '2rem' }}>Winner: {isMe ? "YOU!" : `Player ${winner?.name || gameState.winnerId.slice(0,8)}`}</h3>;
+                         })() : <h2>Winner Declared!</h2>}
                          
                          <div className="scoreboard" style={{ margin: '2rem 0', textAlign: 'left' }}>
                             <h3>Scores:</h3>
@@ -72,24 +96,6 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
             </div>
         );
     }
-
-    // State for notifications
-    const [notification, setNotification] = React.useState<string | null>(null);
-    const prevPlayerCount = React.useRef(0);
-
-    // Effect to detect new players
-    React.useEffect(() => {
-        if (gameState && gameState.players) {
-            const currentCount = gameState.players.length;
-            if (prevPlayerCount.current > 0 && currentCount > prevPlayerCount.current) {
-                // New player joined
-                const newPlayer = gameState.players[currentCount - 1]; // Assuming appended
-                setNotification(`${newPlayer.name} joined the game!`);
-                setTimeout(() => setNotification(null), 3000);
-            }
-            prevPlayerCount.current = currentCount;
-        }
-    }, [gameState?.players]);
 
     if (gameState.status === 'WAITING') {
         const slotsFilled = gameState.players ? gameState.players.length : (gameState.opponentHandSizes.filter(s => s >= 0).length + 1);
@@ -154,7 +160,7 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
                                 {gameState.players?.map((p, i) => (
                                     <li key={p.id || i} style={{ padding: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.isConnected ? '#10b981' : '#64748b' }}></div>
-                                        <span>{p.name} {p.id === gameState.mySeatIndex.toString() ? "(You)" : ""}</span>
+                                        <span>{p.name} {p.seatIndex === gameState.mySeatIndex ? "(You)" : ""}</span>
                                         {p.seatIndex === 0 && <span style={{ fontSize: '0.8rem', background: '#eab308', color: 'black', padding: '2px 6px', borderRadius: '4px', marginLeft: 'auto' }}>Master</span>}
                                     </li>
                                 ))}
@@ -252,7 +258,7 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
                              <div className="card-back-pattern"></div>
                         </div>
                     ) : (
-                        <div className="empty-slot">Empty (Reshuffles)</div>
+                        <div className="empty-slot">Empty (Game Ends)</div>
                     )}
                     <span className="deck-count">{gameState.deckCount} Cards</span>
                 </div>
