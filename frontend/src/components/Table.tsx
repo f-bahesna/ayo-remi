@@ -29,6 +29,10 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
             }
             prevPlayerCount.current = currentCount;
         }
+        // Deliberately narrowed to gameState?.players (not the whole gameState object,
+        // which changes on every turn/score update and would fire this join-detection
+        // effect far more often than needed).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [gameState?.players]);
 
     if (!gameState) return <div className="loading">Loading game state...</div>;
