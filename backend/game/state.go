@@ -443,12 +443,14 @@ func (gm *GameManager) DiscardCard(playerID string, cardID string) error {
     gm.Game.CurrentTurnPlayer = (gm.Game.CurrentTurnPlayer + 1) % 4
     gm.Game.TurnPhase = models.PhaseDraw // Next player starts in Draw phase
     
-    // Reset "HasTakenFromPile" for next player? 
+    // Reset "HasTakenFromPile" for next player?
     // Usually this flag is per turn.
-    // The struct has `HasTakenFromPile` on Player. 
+    // The struct has `HasTakenFromPile` on Player.
     // We should reset it for the NEW current player.
     gm.Game.Players[gm.Game.CurrentTurnPlayer].HasTakenFromPile = false
-    
+
+    gm.autoSkipDisconnectedTurns()
+
     gm.save()
     return nil
 }
@@ -655,10 +657,62 @@ func (gm *GameManager) SetPlayerConnectedUnlocked(playerID string, connected boo
     for i := range gm.Game.Players {
         if gm.Game.Players[i].ID == playerID {
             gm.Game.Players[i].IsConnected = connected
+            if !connected {
+                // Without this, a mid-game disconnect on the disconnected
+                // player's own turn (or a future turn cycling back to their
+                // now-empty seat) would leave CurrentTurnPlayer stuck on a
+                // seat nobody can act from, permanently freezing the other
+                // 3 players since every action gates on "not your turn".
+                gm.autoSkipDisconnectedTurns()
+            }
             return true
         }
     }
     return false
+}
+
+// autoSkipDisconnectedTurns auto-plays (draw, if still owed, then discard)
+// on behalf of the current turn player for as long as they're disconnected,
+// so an empty seat can't permanently block the rest of the table. Bounded to
+// one lap around the table so it can't spin forever if everyone drops.
+// Caller MUST hold gm.Mutex.
+func (gm *GameManager) autoSkipDisconnectedTurns() {
+    for i := 0; i < len(gm.Game.Players); i++ {
+        if gm.Game.Status != models.StateInProgress {
+            return
+        }
+        idx := gm.Game.CurrentTurnPlayer
+        current := &gm.Game.Players[idx]
+        if current.IsConnected {
+            return
+        }
+
+        if gm.Game.TurnPhase == models.PhaseDraw {
+            if len(gm.Game.Deck) == 0 {
+                gm.Game.Status = models.StateFinished
+                gm.Game.WinnerID = ""
+                gm.calculateScores()
+                gm.save()
+                return
+            }
+            drawn := gm.Game.Deck[0]
+            gm.Game.Deck = append([]models.Card{}, gm.Game.Deck[1:]...)
+            current.Hand = append(current.Hand, drawn)
+        }
+
+        if len(current.Hand) == 0 {
+            return
+        }
+        lastIdx := len(current.Hand) - 1
+        card := current.Hand[lastIdx]
+        current.Hand = current.Hand[:lastIdx]
+        gm.Game.Pile = append(gm.Game.Pile, card)
+
+        gm.Game.CurrentTurnPlayer = (idx + 1) % len(gm.Game.Players)
+        gm.Game.TurnPhase = models.PhaseDraw
+        gm.Game.Players[gm.Game.CurrentTurnPlayer].HasTakenFromPile = false
+    }
+    gm.save()
 }
 
 func (gm *GameManager) GetPublicView(playerID string) *models.PublicGameView {

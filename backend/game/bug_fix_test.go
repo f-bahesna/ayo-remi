@@ -339,3 +339,97 @@ func TestBug5_PlaySet_IgnoresClientSpoofedCardData(t *testing.T) {
 
     t.Log("Bug 5 FIXED: PlaySet resolves cards by ID from server-authoritative hand data")
 }
+
+// Bug 6: a mid-game disconnect never freed or skipped the disconnected
+// player's seat. Turn order just kept cycling CurrentTurnPlayer through all
+// 4 seats every discard, so once it landed back on the empty seat, every
+// remaining player's action was rejected with "not your turn" forever -
+// there is no reconnect path, so this permanently soft-locked the room.
+// SetPlayerConnectedUnlocked must auto-play (draw+discard) through
+// disconnected seats so the other players can keep going.
+func TestBug6_DisconnectDuringOwnTurn_AutoSkipsInsteadOfFreezingRoom(t *testing.T) {
+    store := &MockStore{}
+    gm := NewGame(store)
+
+    players := make([]models.Player, 4)
+    for i := 0; i < 4; i++ {
+        players[i] = models.Player{ID: idFor(i), Name: idFor(i), IsConnected: true, Hand: []models.Card{
+            {Suit: models.Spades, Rank: models.Rank(2 + i), ID: idFor(i) + "-h1"},
+        }}
+    }
+    gm.Game = models.Game{
+        ID:                "test",
+        Status:            models.StateInProgress,
+        Players:           players,
+        CurrentTurnPlayer: 0,
+        TurnPhase:         models.PhaseDraw,
+        Deck:              NewDeck(),
+        TableSets:         make([][]models.Card, 0),
+    }
+
+    // Player 0 drops mid-turn, before drawing.
+    if !gm.SetPlayerConnectedUnlocked("p0", false) {
+        t.Fatalf("expected known player p0 to be found")
+    }
+
+    if gm.Game.CurrentTurnPlayer == 0 {
+        t.Fatalf("Bug 6 STILL BROKEN: turn stayed on disconnected player 0 instead of auto-skipping")
+    }
+    if gm.Game.Status != models.StateInProgress {
+        t.Fatalf("game should still be in progress, got %v", gm.Game.Status)
+    }
+
+    // The next connected player must be able to act immediately.
+    next := gm.Game.CurrentTurnPlayer
+    if err := gm.DrawCard(players[next].ID, "DECK", 1); err != nil {
+        t.Fatalf("Bug 6 STILL BROKEN: next connected player could not act after auto-skip: %v", err)
+    }
+
+    t.Log("Bug 6 FIXED: disconnecting on your own turn auto-plays it so the other players aren't frozen out")
+}
+
+// Bug 6b: multiple consecutive disconnected seats must all be skipped in one
+// pass, not just the one that triggered the check.
+func TestBug6b_DisconnectSkipsPastMultipleEmptySeatsInARow(t *testing.T) {
+    store := &MockStore{}
+    gm := NewGame(store)
+
+    players := make([]models.Player, 4)
+    for i := 0; i < 4; i++ {
+        players[i] = models.Player{ID: idFor(i), Name: idFor(i), IsConnected: true, Hand: []models.Card{
+            {Suit: models.Spades, Rank: models.Rank(2 + i), ID: idFor(i) + "-h1"},
+        }}
+    }
+    // Seats 1 and 2 are already disconnected; only 0 and 3 are live.
+    players[1].IsConnected = false
+    players[2].IsConnected = false
+
+    gm.Game = models.Game{
+        ID:                "test",
+        Status:            models.StateInProgress,
+        Players:           players,
+        CurrentTurnPlayer: 0,
+        TurnPhase:         models.PhasePlay, // player 0 already drew this turn
+        Deck:              NewDeck(),
+        TableSets:         make([][]models.Card, 0),
+    }
+
+    // Player 0 discards, handing the turn to seat 1 (disconnected) which
+    // must cascade straight through seat 2 (also disconnected) to seat 3.
+    if err := gm.DiscardCard("p0", "p0-h1"); err != nil {
+        t.Fatalf("discard should succeed: %v", err)
+    }
+
+    if gm.Game.CurrentTurnPlayer != 3 {
+        t.Fatalf("Bug 6b STILL BROKEN: expected turn to cascade past seats 1 and 2 to seat 3, got seat %d", gm.Game.CurrentTurnPlayer)
+    }
+    if err := gm.DrawCard("p3", "DECK", 1); err != nil {
+        t.Fatalf("connected player at seat 3 should be able to act: %v", err)
+    }
+
+    t.Log("Bug 6b FIXED: consecutive disconnected seats are all auto-skipped in one pass")
+}
+
+func idFor(i int) string {
+    return "p" + string(rune('0'+i))
+}
