@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import type { GameState, WSMessage } from '../types';
+import { getWsBaseUrl } from '../config';
 
 interface WebSocketContextType {
     isConnected: boolean;
@@ -35,10 +36,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             ws.current.close();
         }
 
-        // Use current hostname (e.g., actual IP) to connect to backend on port 8080
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsHost = window.location.hostname; 
-        const wsUrl = `${wsProtocol}//${wsHost}:8080/ws?room=${roomId}&name=${name}`;
+        const wsUrl = `${getWsBaseUrl()}/ws?room=${encodeURIComponent(roomId)}&name=${encodeURIComponent(name)}`;
         console.log("Attempting WebSocket Connection to:", wsUrl);
         const socket = new WebSocket(wsUrl);
         ws.current = socket;

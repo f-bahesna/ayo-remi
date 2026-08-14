@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useGame } from './context/WebSocketContext';
 import Table from './components/Table';
+import { getApiBaseUrl } from './config';
 import './App.css';
 
 const AppContent: React.FC = () => {
@@ -13,9 +14,7 @@ const AppContent: React.FC = () => {
 
     const createRoom = async () => {
         try {
-            const apiProtocol = window.location.protocol;
-            const apiHost = window.location.hostname;
-            const res = await fetch(`${apiProtocol}//${apiHost}:8080/api/rooms`, { method: 'POST' });
+            const res = await fetch(`${getApiBaseUrl()}/api/rooms`, { method: 'POST' });
             if (!res.ok) throw new Error("Failed to create room");
             const data = await res.json();
             setRoomId(data.roomId);
