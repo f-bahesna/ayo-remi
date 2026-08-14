@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useGame } from './context/WebSocketContext';
+import { useGame } from './context/useGame';
 import Table from './components/Table';
 import { getApiBaseUrl } from './config';
 import './App.css';

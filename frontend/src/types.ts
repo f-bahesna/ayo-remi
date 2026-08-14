@@ -49,7 +49,6 @@ export interface GameState {
     score: number;
 }
 
-export interface WSMessage {
-    type: string;
-    payload: any;
-}
+export type WSMessage =
+    | { type: "GAME_UPDATE"; payload: GameState }
+    | { type: "ERROR"; payload: { message: string } };

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { WebSocketProvider, useGame } from './WebSocketContext';
+import { WebSocketProvider } from './WebSocketContext';
+import { useGame } from './useGame';
 
 // Minimal fake WebSocket so connect() can run without a real network/server.
 class FakeWebSocket {

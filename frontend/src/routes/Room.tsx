@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import Table from '../components/Table';
-import { WebSocketProvider, useGame } from '../context/WebSocketContext';
+import { WebSocketProvider } from '../context/WebSocketContext';
+import { useGame } from '../context/useGame';
 import '../App.css';
 
 const GameContent: React.FC = () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
-import { WebSocketProvider, useGame } from '../context/WebSocketContext';
+import { WebSocketProvider } from '../context/WebSocketContext';
+import { useGame } from '../context/useGame';
 import Table from './Table';
 import type { GameState } from '../types';
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useGame } from '../context/WebSocketContext';
+import { useGame } from '../context/useGame';
 import Card from './Card';
 import Hand from './Hand';
 import './Table.css';
