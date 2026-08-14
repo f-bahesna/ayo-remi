@@ -443,12 +443,14 @@ func (gm *GameManager) DiscardCard(playerID string, cardID string) error {
     gm.Game.CurrentTurnPlayer = (gm.Game.CurrentTurnPlayer + 1) % 4
     gm.Game.TurnPhase = models.PhaseDraw // Next player starts in Draw phase
     
-    // Reset "HasTakenFromPile" for next player? 
+    // Reset "HasTakenFromPile" for next player?
     // Usually this flag is per turn.
-    // The struct has `HasTakenFromPile` on Player. 
+    // The struct has `HasTakenFromPile` on Player.
     // We should reset it for the NEW current player.
     gm.Game.Players[gm.Game.CurrentTurnPlayer].HasTakenFromPile = false
-    
+
+    gm.autoSkipDisconnectedTurns()
+
     gm.save()
     return nil
 }
@@ -503,61 +505,18 @@ func (gm *GameManager) DeclareWin(playerID string) error {
 }
 
 func (gm *GameManager) calculateScores() {
-    // Winner gets 0? User didn't specify winner points.
-    // Losers scored based on cards in hand.
-    // 2-10: 5, JQK: 10, A: 15, Joker: -250 (Penalty?)
-    // Note: Usually points are BAD in Rummy.
-    // User said: "Joker: -250 points... A player who ends game... scores -250 (if holding joker)".
-    // "All other players are scored...".
-    // I will sum up points as penalties.
-    
+    // Per REMI_RULES_ID.md: winner scores 0, others are scored by leftover hand value
+    // (2-10: 5, J/Q/K: 10, A: 15, Joker: -250), taken literally since the rule text's
+    // sign convention for Joker is ambiguous.
     for i := range gm.Game.Players {
         if gm.Game.Players[i].ID == gm.Game.WinnerID {
             gm.Game.Players[i].Score = 0
             continue
         }
-        
+
         score := 0
         for _, c := range gm.Game.Players[i].Hand {
             if c.Suit == models.Joker {
-                score -= 250 // Negative for holding Joker? 
-                // Wait. "Joker: -250 points (if not part of a valid combination)".
-                // Usually penalties are POSITIVE in Rummy points (bad).
-                // Or maybe user wants SCORE (good).
-                // "Scores -250 points" usually means BAD.
-                // "Number cards: 5 points each". 
-                // If I have 3 cards (2,3,4) = 15 points. IS this good or bad?
-                // Rummy: Goal is 0. Points are bad.
-                // So holding Joker should be HUGE penalty. -250 is... negative penalty?
-                // Context: "Scores -250" might mean -250 to total score?
-                // Let's assume Points = Bad.
-                // So Score += 5.
-                // Joker = -250? That reduces score (Good?).
-                // Usually holding Joker is BAD -> +25 points or +50 usually.
-                // "Joker: -250 points".
-                // Maybe the Game Score is "Points you got".
-                // Let's just implement exactly: Score += Value.
-                // Joker Value = -250.
-                // 2-10 Value = 5.
-                // So if I have Joker + 2: Score = -250 + 5 = -245.
-                // This seems generous if goal is low score.
-                // BUT "Joker... scores -250 points".
-                // Maybe user implies "Joker COST 250 points"?
-                // "Scores -250" is specific.
-                // Rule 13: "if a player ends the game... scores -250 points".
-                // This refers to the WINNER if they have Joker? "If a player ends the game while still holding a Joker...".
-                // But winner discards last card. If they hold Joker, they can't end game unless Joker is set?
-                // Ah, maybe they end game with Joker in hand (invalid win?).
-                // But my logic ensures valid win.
-                // Let's look at Rule 16: "All other players are scored... Joker: -250 points".
-                // If 2-10 are 5 pts. 
-                // It's ambiguous if 5 pts is penalty or reward.
-                // Given "Rummy", usually leftover cards are penalty.
-                // If Joker is -250, that's a massive reduction in penalty?
-                // OR user means 250 points penalty.
-                // I will stick to literal text:
-                // Value: 2-10->5, JQK->10, A->15, Joker-> -250.
-                
                 score += -250
             } else {
                 switch c.Rank {
@@ -655,10 +614,62 @@ func (gm *GameManager) SetPlayerConnectedUnlocked(playerID string, connected boo
     for i := range gm.Game.Players {
         if gm.Game.Players[i].ID == playerID {
             gm.Game.Players[i].IsConnected = connected
+            if !connected {
+                // Without this, a mid-game disconnect on the disconnected
+                // player's own turn (or a future turn cycling back to their
+                // now-empty seat) would leave CurrentTurnPlayer stuck on a
+                // seat nobody can act from, permanently freezing the other
+                // 3 players since every action gates on "not your turn".
+                gm.autoSkipDisconnectedTurns()
+            }
             return true
         }
     }
     return false
+}
+
+// autoSkipDisconnectedTurns auto-plays (draw, if still owed, then discard)
+// on behalf of the current turn player for as long as they're disconnected,
+// so an empty seat can't permanently block the rest of the table. Bounded to
+// one lap around the table so it can't spin forever if everyone drops.
+// Caller MUST hold gm.Mutex.
+func (gm *GameManager) autoSkipDisconnectedTurns() {
+    for i := 0; i < len(gm.Game.Players); i++ {
+        if gm.Game.Status != models.StateInProgress {
+            return
+        }
+        idx := gm.Game.CurrentTurnPlayer
+        current := &gm.Game.Players[idx]
+        if current.IsConnected {
+            return
+        }
+
+        if gm.Game.TurnPhase == models.PhaseDraw {
+            if len(gm.Game.Deck) == 0 {
+                gm.Game.Status = models.StateFinished
+                gm.Game.WinnerID = ""
+                gm.calculateScores()
+                gm.save()
+                return
+            }
+            drawn := gm.Game.Deck[0]
+            gm.Game.Deck = append([]models.Card{}, gm.Game.Deck[1:]...)
+            current.Hand = append(current.Hand, drawn)
+        }
+
+        if len(current.Hand) == 0 {
+            return
+        }
+        lastIdx := len(current.Hand) - 1
+        card := current.Hand[lastIdx]
+        current.Hand = current.Hand[:lastIdx]
+        gm.Game.Pile = append(gm.Game.Pile, card)
+
+        gm.Game.CurrentTurnPlayer = (idx + 1) % len(gm.Game.Players)
+        gm.Game.TurnPhase = models.PhaseDraw
+        gm.Game.Players[gm.Game.CurrentTurnPlayer].HasTakenFromPile = false
+    }
+    gm.save()
 }
 
 func (gm *GameManager) GetPublicView(playerID string) *models.PublicGameView {

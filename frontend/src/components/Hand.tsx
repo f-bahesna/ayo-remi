@@ -16,10 +16,15 @@ interface HandProps {
 const Hand: React.FC<HandProps> = ({ cards, onPlaySet, onDiscard, isMyTurn, turnPhase, onSelectionChange }) => {
     const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
 
-    // Clear selection when hand changes (cards added/removed) or phase transitions
-    useEffect(() => {
+    // Clear selection when hand changes (cards added/removed) or phase transitions.
+    // Adjusted during render (not in an effect) per https://react.dev/learn/you-might-not-need-an-effect
+    // to avoid the extra cascading render a useEffect-based reset would trigger.
+    const [prevResetKey, setPrevResetKey] = useState(`${cards.length}:${turnPhase}`);
+    const resetKey = `${cards.length}:${turnPhase}`;
+    if (resetKey !== prevResetKey) {
+        setPrevResetKey(resetKey);
         setSelectedIndices([]);
-    }, [cards.length, turnPhase]);
+    }
 
     // Notify parent of selection changes
     useEffect(() => {
@@ -27,7 +32,7 @@ const Hand: React.FC<HandProps> = ({ cards, onPlaySet, onDiscard, isMyTurn, turn
             const selectedIds = selectedIndices.map(i => cards[i]?.id).filter(Boolean);
             onSelectionChange(selectedIds);
         }
-    }, [selectedIndices, cards]);
+    }, [selectedIndices, cards, onSelectionChange]);
 
     const toggleSelect = (index: number) => {
         let next: number[];

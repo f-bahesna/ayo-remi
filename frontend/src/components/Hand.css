@@ -46,6 +46,9 @@
     cursor: pointer;
     transition: all 0.2s;
     font-size: 1rem;
+    font-family: inherit;
+    background: #334155;
+    color: white;
     box-shadow: 0 4px 6px rgba(0,0,0,0.2);
 }
 

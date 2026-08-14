@@ -1,21 +1,7 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import type { GameState, WSMessage } from '../types';
-
-interface WebSocketContextType {
-    isConnected: boolean;
-    gameState: GameState | null;
-    connect: (name: string, roomId?: string) => void;
-    drawCard: (source?: "DECK" | "PILE", count?: number) => void;
-    drawFromPile: (handCardIds: string[], pileCardId: string) => void;
-    playSet: (cards: any[]) => void;
-    discardCard: (cardId: string) => void;
-    declareWin: () => void;
-    startGame: () => void;
-    restartGame: () => void;
-    isMyTurn: boolean;
-}
-
-const WebSocketContext = createContext<WebSocketContextType | null>(null);
+import React, { useEffect, useState, useRef } from 'react';
+import type { Card, GameState, WSMessage } from '../types';
+import { getWsBaseUrl } from '../config';
+import { WebSocketContext } from './gameContext';
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [isConnected, setIsConnected] = useState(false);
@@ -35,10 +21,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             ws.current.close();
         }
 
-        // Use current hostname (e.g., actual IP) to connect to backend on port 8080
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsHost = window.location.hostname; 
-        const wsUrl = `${wsProtocol}//${wsHost}:8080/ws?room=${roomId}&name=${name}`;
+        const wsUrl = `${getWsBaseUrl()}/ws?room=${encodeURIComponent(roomId)}&name=${encodeURIComponent(name)}`;
         console.log("Attempting WebSocket Connection to:", wsUrl);
         const socket = new WebSocket(wsUrl);
         ws.current = socket;
@@ -73,7 +56,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         };
     };
 
-    const sendMessage = (type: string, payload: any = {}) => {
+    const sendMessage = (type: string, payload: Record<string, unknown> = {}) => {
         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify({ type, payload }));
         }
@@ -81,7 +64,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const drawCard = (source: "DECK" | "PILE" = "DECK", count: number = 1) => sendMessage('DRAW_CARD', { source, count });
     const drawFromPile = (handCardIds: string[], pileCardId: string) => sendMessage('DRAW_FROM_PILE', { handCardIds, pileCardId });
-    const playSet = (cards: any[]) => sendMessage('PLAY_SET', { cards });
+    const playSet = (cards: Card[]) => sendMessage('PLAY_SET', { cards });
     const discardCard = (cardId: string) => sendMessage('DISCARD_CARD', { cardId });
     const declareWin = () => sendMessage('DECLARE_WIN');
     const startGame = () => sendMessage('START_GAME');
@@ -94,10 +77,4 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             {children}
         </WebSocketContext.Provider>
     );
-};
-
-export const useGame = () => {
-    const context = useContext(WebSocketContext);
-    if (!context) throw new Error('useGame must be used within WebSocketProvider');
-    return context;
 };

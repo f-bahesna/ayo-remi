@@ -1,5 +1,5 @@
 import React from 'react';
-import { useGame } from '../context/WebSocketContext';
+import { useGame } from '../context/useGame';
 import Card from './Card';
 import Hand from './Hand';
 import './Table.css';
@@ -29,24 +29,16 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
             }
             prevPlayerCount.current = currentCount;
         }
+        // Deliberately narrowed to gameState?.players (not the whole gameState object,
+        // which changes on every turn/score update and would fire this join-detection
+        // effect far more often than needed).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [gameState?.players]);
 
     if (!gameState) return <div className="loading">Loading game state...</div>;
 
     const isRoomMaster = gameState.mySeatIndex === 0;
 
-    // ... existing handlers ...
-    // To keep the file content intact, I'll assume handlers are here or unchanged
-    // But I must include them if I am replacing the block containing them.
-    // The previous view_file showed handlers defined inside component.
-    // I will use specific replacement for the functional component signature/start and the waiting block.
-    // Wait, replace_file_content needs contiguous block.
-    // I can replace from "const Table..." down to the end of Waiting block.
-    
-    // Let's redefine handlers here to be safe, or just use "... handlers ..." if I had multi-replace.
-    // But I must provide exact content.
-    // I will replace the start of the component and the Waiting block.
-    
     const handleDrawDeck = () => {
         // Note: deckCount === 0 is intentionally allowed through - drawing from an
         // empty deck is how the player triggers the backend's "deck empty" game-over
@@ -59,7 +51,6 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
 
 
     if (gameState.status === 'FINISHED') {
-         // ... (Keep existing FINISHED block code)
          return (
             <div className="game-table">
                 <div className="center-area">
@@ -192,14 +183,6 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
     const renderOpponent = (seatIndex: number, handSize: number) => {
         const pos = getPosition(seatIndex);
         const isActive = gameState.currentTurnPlayer === seatIndex;
-        // Find player data if available (e.g. name, score)
-        // Note: gameState.players might not be fully populated in PublicView unless we add it.
-        // PublicView usually has "OpponentHandSizes". Name/Score might be missing.
-        // Let's assume PublicView strictly follows `state.go` struct.
-        // Actually, `PublicGameView` does NOT have `Players` list, only `OpponentHandSizes`.
-        // So we can't show names easily unless we add `Players` metadata to PublicView.
-        // For now, use "Player X".
-        
         const player = gameState.players?.find(p => p.seatIndex === seatIndex);
 
         return (
@@ -227,8 +210,6 @@ const Table: React.FC<TableProps> = ({ roomId }) => {
             </div>
         );
     };
-
-    // const topPileCard = gameState.pile.length > 0 ? gameState.pile[gameState.pile.length - 1] : null;
 
     return (
         <div className="game-table">
