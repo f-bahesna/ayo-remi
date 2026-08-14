@@ -64,6 +64,7 @@ input {
     border: none;
     border-radius: 6px;
     font-size: 1rem;
+    font-family: inherit;
     font-weight: bold;
     cursor: pointer;
     transition: background 0.2s;
