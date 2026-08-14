@@ -73,7 +73,7 @@ graph TD
 ```bash
 cd backend
 go mod tidy
-go run main.go
+go run ./cmd/server
 ```
 *Server runs on `http://localhost:8080`*
 
