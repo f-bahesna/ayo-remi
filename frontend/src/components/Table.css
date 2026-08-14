@@ -218,7 +218,7 @@
     transform: var(--base-transform) scale(1.1) !important; /* Need to preserve base rotate/translate */
 }
 
-/* Move Played Sets to bottom of center area */
+/* Matched (played) sets default to a small row under the seat's hand. */
 .player-played-sets {
     display: flex;
     justify-content: center;
@@ -228,8 +228,30 @@
     pointer-events: auto;
 }
 
+/*
+ * The top opponent and "my seat" (bottom) sit on the vertical axis that runs
+ * through the center deck/pile. Stacking their played sets in normal flow
+ * (below the top hand / above the bottom hand) grows the seat toward screen
+ * center and can cover the deck/pile. Pin these sets to the player's left,
+ * out of flow, so the center cards always stay fully visible.
+ */
+.opponent-top .player-played-sets,
 .player-played-sets.my-sets {
-    margin-bottom: 10px; /* Space between sets and hand */
+    position: absolute;
+    top: 0;
+    right: 100%;
+    margin-top: 0;
+    margin-right: 15px;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    width: max-content;
+}
+
+.player-played-sets.my-sets {
+    top: auto;
+    right: auto;
+    left: 20px;
+    bottom: 25px;
 }
 
 .empty-slot.dashed {
